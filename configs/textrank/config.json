@@ -1,0 +1,19 @@
+{
+  "model":{
+    "name": "textrank",
+    "params":{
+      "ratio": 0.2,
+      "word_count": null,
+      "split": false
+    }
+  },
+  "input":{
+    "file_path": "data/dataset/ria_20.json"
+  },
+  "results":{
+    "output_dir": "output",
+    "experiment_number": 0,
+    "pred_file_name_suffix": "pred",
+    "ref_file_name_suffix": "reference"
+  }
+}
