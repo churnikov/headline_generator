@@ -1,4 +1,6 @@
 import argparse
+import gzip
+import json
 import os
 
 from tqdm import tqdm
@@ -37,6 +39,17 @@ def download_dataset(size: str='20', save_path='data/dataset') -> None:
         with open(os.path.join(CURRENT_PATH, save_path, file_name), 'wb') as f:
             for data in tqdm(resp.iter_content(), desc=f'Downloading file {file_name}'):
                 f.write(data)
+
+
+def json_iterator(file_name=os.path.join(CURRENT_PATH, 'ria.json.gz')):
+    if file_name.endswith('.gz'):
+        with gzip.open(file_name) as f:
+            for l in f.readlines():
+                yield json.loads(l)
+    else:
+        with open(file_name, 'r') as f:
+            for l in f.readlines():
+                yield json.loads(l)
 
 
 if __name__ == '__main__':
