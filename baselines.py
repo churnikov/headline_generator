@@ -6,25 +6,56 @@ from gensim.summarization.textcleaner import split_sentences
 from tqdm import tqdm
 
 from loader import json_iterator
+from preprocessing import BasicHtmlPreprocessor
 
-def summarize_and_save(model_params, file_path, pred_file_name, ref_file_name, preprocessor: Optional[Callable]=None):
-    out_pred = open(pred_file_name, 'w')
-    out_ref = open(ref_file_name, 'w')
-    for jsn in tqdm(json_iterator(file_path), 'Predicting'):
-        reference: str = jsn['title']
 
-        text = jsn['text']
-        if preprocessor is not None:
-            text = preprocessor(text)
+class GensimSummarizer:
+    def __init__(self, model_params, file_path, pred_file_name, ref_file_name,
+                 preprocessor: Optional[BasicHtmlPreprocessor]=None):
+        self.preprocessor = preprocessor
+        self.pred_file_name = pred_file_name
+        self.ref_file_name = ref_file_name
+        self.file_path = file_path
+        self.model_params = model_params
 
+    def open_save_files(self):
+        self.out_pred = open(self.pred_file_name, 'w')
+        self.out_ref = open(self.ref_file_name, 'w')
+
+    def close_save_file(self):
+        self.out_pred.close()
+        self.out_ref.close()
+
+    def summarize_text(self, text: str):
         if len(split_sentences(text)) > 1:
             try:
-                pred: str = summarize(text, **model_params)
+                pred: str = summarize(text, **self.model_params)
             except ValueError:
-                print(f'could not processes {jsn}')
+                pred = text
         else:
             pred: str = text
         if not pred:
             pred = 'none'
-        out_pred.write(pred.replace('\n', '\\n') + '\n')
-        out_ref.write(reference + '\n')
+
+        return pred
+
+    def summarize(self):
+        self.open_save_files()
+
+        for jsn in tqdm(json_iterator(self.file_path), 'Predicting'):
+            reference: str = jsn['title']
+
+            text = jsn['text']
+            if self.preprocessor is not None:
+                text = self.preprocessor.transform(text)
+
+            pred = self.summarize_text(text)
+
+            self.out_pred.write(pred.replace('\n', '\\n') + '\n')
+            self.out_ref.write(reference + '\n')
+
+        self.close_save_file()
+
+
+def extract_first_sentence(file_path):
+    pass

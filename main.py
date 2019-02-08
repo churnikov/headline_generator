@@ -4,7 +4,7 @@ import os
 
 import rouge
 
-from baselines import summarize_and_save
+from baselines import GensimSummarizer
 from preprocessing import BasicHtmlPreprocessor
 
 parser = argparse.ArgumentParser()
@@ -28,7 +28,6 @@ ref_file_name_suffix = config['results']['ref_file_name_suffix']
 prep_name = config['preprocessing']['name']
 if prep_name == 'BasicHtmlPreprocessor':
     preprocessor = BasicHtmlPreprocessor()
-    prep_function = preprocessor.transform
 else:
     raise NotImplementedError(f'Preprocessor {prep_name} not supported')
 
@@ -40,7 +39,8 @@ pred_test_file_name = os.path.join(save_path, f'test_{pred_file_name_suffix}.txt
 ref_test_file_name = os.path.join(save_path, f'test_{ref_file_name_suffix}.txt')
 
 if model_name == 'textrank':
-    summarize_and_save(model_params, file_to_process, pred_test_file_name, ref_test_file_name, prep_function)
+    summarizer = GensimSummarizer(model_params, file_to_process, pred_test_file_name, ref_test_file_name, preprocessor)
+    summarizer.summarize()
 else:
     raise NotImplementedError(f'Model {model_name} not yet implemented')
 
@@ -50,5 +50,8 @@ scores = r.get_scores(avg=True)
 
 print(scores)
 with open(os.path.join(save_path, 'scores.json'), 'w') as f:
-    json.dump(scores, f)
+    json.dump(scores, f, indent=2)
+
+with open(os.path.join(save_path, 'config.json'), 'w') as f:
+    json.dump(config, f, indent=2)
 
