@@ -1,0 +1,22 @@
+{
+  "model":{
+    "name": "textrank",
+    "params":{
+      "ratio": null,
+      "word_count": 10,
+      "split": false
+    }
+  },
+  "input":{
+    "file_path": "data/dataset/ria.json.gz"
+  },
+  "results":{
+    "output_dir": "output",
+    "experiment_number": 1,
+    "pred_file_name_suffix": "pred",
+    "ref_file_name_suffix": "reference"
+  },
+  "preprocessing":{
+    "name": "BasicHtmlPreprocessor"
+  }
+}
