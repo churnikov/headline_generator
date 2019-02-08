@@ -57,5 +57,11 @@ class GensimSummarizer:
         self.close_save_file()
 
 
-def extract_first_sentence(file_path):
-    pass
+class ExtractFirstFullSentence(GensimSummarizer):
+
+    def summarize_text(self, text: str):
+        sentences = split_sentences(text)
+        if 'риа новости' in sentences[0]:
+            return sentences[1]
+        else:
+            return sentences[0]

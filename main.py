@@ -4,7 +4,7 @@ import os
 
 import rouge
 
-from baselines import GensimSummarizer
+from baselines import *
 from preprocessing import BasicHtmlPreprocessor
 
 parser = argparse.ArgumentParser()
@@ -40,6 +40,10 @@ ref_test_file_name = os.path.join(save_path, f'test_{ref_file_name_suffix}.txt')
 
 if model_name == 'textrank':
     summarizer = GensimSummarizer(model_params, file_to_process, pred_test_file_name, ref_test_file_name, preprocessor)
+    summarizer.summarize()
+if model_name == 'first_sentence':
+    summarizer = ExtractFirstFullSentence(model_params, file_to_process, pred_test_file_name, ref_test_file_name,
+                                          preprocessor)
     summarizer.summarize()
 else:
     raise NotImplementedError(f'Model {model_name} not yet implemented')

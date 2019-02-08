@@ -1,0 +1,20 @@
+{
+  "model":{
+    "name": "first_sentence",
+    "params":{
+
+    }
+  },
+  "input":{
+    "file_path": "data/dataset/ria_1k.json"
+  },
+  "results":{
+    "output_dir": "output",
+    "experiment_number": 0,
+    "pred_file_name_suffix": "pred",
+    "ref_file_name_suffix": "reference"
+  },
+  "preprocessing":{
+    "name": "BasicHtmlPreprocessor"
+  }
+}
