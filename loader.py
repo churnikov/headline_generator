@@ -44,11 +44,11 @@ def download_dataset(size: str='20', save_path='data/dataset') -> None:
 def json_iterator(file_name=os.path.join(CURRENT_PATH, 'ria.json.gz')):
     if file_name.endswith('.gz'):
         with gzip.open(file_name) as f:
-            for l in f.readlines():
+            for l in f:
                 yield json.loads(l)
     else:
         with open(file_name, 'r') as f:
-            for l in f.readlines():
+            for l in f:
                 yield json.loads(l)
 
 
