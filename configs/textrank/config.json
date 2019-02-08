@@ -15,5 +15,8 @@
     "experiment_number": 0,
     "pred_file_name_suffix": "pred",
     "ref_file_name_suffix": "reference"
+  },
+  "preprocessing":{
+    "name": "BasicHtmlPreprocessor"
   }
 }
