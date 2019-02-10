@@ -1,6 +1,8 @@
 import re
 from typing import Union, List
 
+from bpemb import BPEmb
+
 
 class BasicHtmlPreprocessor:
     """replace all html tags end entities with space"""
@@ -24,4 +26,19 @@ class BasicHtmlPreprocessor:
             raise TypeError(f'Type {type(text)} is not supported. `text` should be `list` or `str`')
 
 
+class BPETokenizer:
+    """Use byte pair encoding to transform text"""
 
+    def __init__(self, lang='ru', pretrained=True, vocab_size=100000, dim=300):
+        self.lang = lang
+        self.pretrained = pretrained
+        self.bpe = BPEmb(lang=self.lang, vs=vocab_size, dim=dim, vs_fallback=True)
+
+    def fit(self, text):
+        raise NotImplementedError('fit is not supported')
+
+    def transform(self, text: Union[str, List[str]], get_ids=True):
+        if get_ids:
+            return self.bpe.encode_ids_with_bos_eos(text)
+        else:
+            return self.bpe.encode_with_bos_eos(text)
