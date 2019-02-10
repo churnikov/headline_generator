@@ -3,9 +3,10 @@ import json
 import os
 
 import rouge
+import torch
 
 from baselines import *
-from preprocessing import BasicHtmlPreprocessor
+from preprocessing import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config_path')
@@ -45,6 +46,29 @@ if model_name == 'first_sentence':
     summarizer = ExtractFirstFullSentence(model_params, file_to_process, pred_test_file_name, ref_test_file_name,
                                           preprocessor)
     summarizer.summarize()
+if model_name == 'Seq2SeqSummarizer':
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    if config['model']['embedding']['name'] == 'bpe':
+        bpe_tokenizer = BPETokenizer(**config['model']['embedding']['params'])
+        embedding = nn.Embedding.from_pretrained(torch.tensor(bpe_tokenizer.bpe.vectors))
+    else:
+        raise NotImplementedError(f'Embedding {config["model"]["embedding"]["name"]} not yet implemented')
+
+    if config['model']['encoder']['name'] == 'lstm_encoder':
+        encoder = Encoder(embedding=embedding, **config['model']['encoder'])
+    else:
+        raise NotImplementedError(f'Encoder {config["model"]["encoder"]["name"]} not yet implemented')
+
+    if config['model']['decoder']['name'] == 'lstm_decoder':
+        decoder = Decoder(embedding=embedding, vocab_size=config['model']['embedding']['params']['vocab_size'],
+                          **config['model']['decoder'])
+    else:
+        raise NotImplementedError(f'Encoder {config["model"]["encoder"]["name"]} not yet implemented')
+
+    summarizer = Seq2SeqSummarizer(encoder, decoder, device=device)
+
+
 else:
     raise NotImplementedError(f'Model {model_name} not yet implemented')
 
