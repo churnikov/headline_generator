@@ -86,11 +86,12 @@ class Encoder(nn.Module):
                             bidirectional=lstm_bidirectional, dropout=lstm_dropout)
 
     def forward(self, input):
-        embed = self.dropout(self.embedding(input))
 
+        embed = self.dropout(self.embedding(input))
+        # Input size (seq_len, batch, input_size)
         _, (h, c) = self.lstm(embed)
 
-        return (h, c)
+        return h, c
 
 
 class Decoder(nn.Module):
@@ -108,16 +109,17 @@ class Decoder(nn.Module):
                             num_layers=self.n_layers, batch_first=lstm_batch_first,
                             bidirectional=lstm_bidirectional, dropout=lstm_dropout)
 
-        self.out = nn.Linear(lstm_hidden_size, vocab_size)
+        self.vocab_size = vocab_size
+        self.out = nn.Linear(lstm_hidden_size * (2 if lstm_bidirectional else 1), vocab_size)
         self.softmax = nn.Softmax()
 
     def forward(self, input, hidden):
-        embed = self.dropout(self.embedding(input))
+        embed = self.dropout(self.embedding(input.unsqueeze(0)))
 
-        out, _ = self.lstm(embed, hidden)
-        pred = self.softmax(self.out(out))
+        out, hidden = self.lstm(embed, hidden)
+        pred = self.softmax(self.out(out.squeeze(0)))
 
-        return pred
+        return pred, hidden
 
 
 class Seq2SeqSummarizer(nn.Module):
@@ -135,14 +137,14 @@ class Seq2SeqSummarizer(nn.Module):
     def forward(self, input_batch: torch.LongTensor, ground_truth: torch.LongTensor, teacher_forcing_ratio=0.5):
         batch_size = input_batch.shape[1]
         max_len = ground_truth.shape[0]
-        out_size = self.decoder.vocabulary_size
+        out_size = self.decoder.vocab_size
 
         outputs = torch.zeros(max_len, batch_size, out_size).to(self.device)
 
         # Start tokens
         inp = ground_truth[0, :]
 
-        _, hidden = self.encoder(input_batch)
+        hidden = self.encoder(input_batch)
 
         for i in range(1, max_len):
             output, hidden = self.decoder(inp, hidden)

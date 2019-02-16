@@ -15,6 +15,13 @@ from tqdm import tqdm
 from baselines import Encoder, Decoder, Seq2SeqSummarizer
 
 
+try:
+    nn.GRU(100, 100).to('cuda')
+except Exception:
+    pass
+
+
+
 def train(model, train_data, optimizer, criterion, clip, device, teacher_forcing_ratio):
     model.train()
 
@@ -23,7 +30,9 @@ def train(model, train_data, optimizer, criterion, clip, device, teacher_forcing
 
     with tqdm(bar_format='{postfix[0]} {postfix[3][iter]}/{postfix[2]} {postfix[1]}: {postfix[1][loss]}',
               postfix=['Training iter:', 'Loss', dict(loss=0, iter=0)]) as t:
-        for i, (x_train, y_train) in enumerate(train_data):
+        for i, data in enumerate(train_data):
+            x_train, y_train = data.text, data.title
+
             optimizer.zero_grad()
 
             output = model.forward(x_train, y_train, teacher_forcing_ratio)
