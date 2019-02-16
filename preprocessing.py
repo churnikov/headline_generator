@@ -8,7 +8,7 @@ class BasicHtmlPreprocessor:
     """replace all html tags end entities with space"""
 
     def __init__(self):
-        self.regexp = re.compile(r'&[\w\d];+|<([^>]+)>')
+        self.regexp = re.compile(r'&[\w\d]+;|<([^>]+)>')
 
     def transform(self, text: Union[str, List[str]]):
         if type(text) == str:
