@@ -50,7 +50,7 @@ EOS_TOKEN = '</s>'
 PAD_TOKEN = '<pad>'
 
 if config['model']['embedding']['name'] == 'bpe':
-    bpe = BPEmb(lang='ru', vs=VOCAB_SIZE, dim=EMB_DIM, add_pad_emb=True)
+    bpe = BPEmb(lang='ru', vs=VOCAB_SIZE-1, dim=EMB_DIM, add_pad_emb=True)
 
     text_field = Field(init_token=SOS_TOKEN, eos_token=EOS_TOKEN, tokenize=bpe.encode, pad_token=PAD_TOKEN)
     text_field.vocab = Vocab(Counter(bpe.words))

@@ -35,7 +35,7 @@
       "params":{
         "lang": "ru",
         "pretrained": true,
-        "vocab_size": 10000,
+        "vocab_size": 10001,
         "dim": 100
       }
     }
