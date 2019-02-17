@@ -31,7 +31,7 @@ def train(model, train_data, optimizer, criterion, clip, device, teacher_forcing
     with tqdm(bar_format='{postfix[0]} {postfix[3][iter]}/{postfix[2]} {postfix[1]}: {postfix[1][loss]}',
               postfix=['Training iter:', 'Loss', dict(loss=0, iter=0)]) as t:
         for i, data in enumerate(train_data):
-            x_train, y_train = data.text, data.title
+            x_train, y_train = data.text.to(device), data.title.to(device)
 
             optimizer.zero_grad()
 
@@ -47,8 +47,8 @@ def train(model, train_data, optimizer, criterion, clip, device, teacher_forcing
 
             epoch_loss += loss.item()
 
-            t.postfix[3]['loss'] = loss.item()
-            t.postfix[3]['iter'] = i
+            t.postfix[2]['loss'] = loss.item()
+            t.postfix[2]['iter'] = i
             t.update()
 
     return epoch_loss / i
@@ -100,9 +100,9 @@ def predict(model, x, max_len, end_symbol, id2word):
 
 csv.field_size_limit(sys.maxsize)
 
-EMB_DIM = 300
-VOCAB_SIZE = 100001
-BATCH_SIZE = 256
+EMB_DIM = 100
+VOCAB_SIZE = 1001
+BATCH_SIZE = 16 
 
 bpe = BPEmb(lang='ru', vs=VOCAB_SIZE-1, dim=EMB_DIM, add_pad_emb=True)
 SOS_TOKEN = bpe.BOS_str
@@ -128,26 +128,28 @@ def lazy_examples(csv_source):
 train_dataset = Dataset(lazy_examples(TRAIN_DATA_PATH), [('text', text_field), ('title', text_field)])
 iterator = BucketIterator(
     train_dataset, batch_size=BATCH_SIZE, sort_key=lambda x: len(x.text), shuffle=False,
-    device=DEVICE)
+    device=None)
 
 embedding = nn.Embedding(VOCAB_SIZE, EMB_DIM)
 
 encoder = Encoder(embedding=embedding, **{
-    "lstm_n_layers": 4,
-    "lstm_hidden_size": 512,
+    "lstm_n_layers": 1,
+    "lstm_hidden_size": 64,
     "lstm_batch_first": False,
     "lstm_bidirectional": True,
     "lstm_dropout": 0.5,
-    "embed_dropout": 0.5
+    "embed_dropout": 0.5,
+    "embedding_dim": EMB_DIM
 })
 
 decoder = Decoder(embedding=embedding, vocab_size=VOCAB_SIZE, **{
-    "lstm_n_layers": 4,
-    "lstm_hidden_size": 512,
+    "lstm_n_layers": 1,
+    "lstm_hidden_size": 64,
     "lstm_batch_first": False,
     "lstm_bidirectional": True,
     "lstm_dropout": 0.5,
-    "embed_dropout": 0.5
+    "embed_dropout": 0.5,
+    "embedding_dim": EMB_DIM
 })
 
 embedding.to(DEVICE)
