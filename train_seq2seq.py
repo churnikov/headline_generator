@@ -137,6 +137,11 @@ def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
             t.postfix[2]['iter'] = i
             t.update()
 
+            if DEVICE == 'cuda':
+                del x_train
+                del y_train
+                torch.cuda.empty_cache()
+
     return epoch_loss / (i or 1)
 
 
@@ -157,6 +162,11 @@ def evaluate(model, validation_data, criterion):
             loss = criterion(output[1:].view(-1, output.shape[2]), y_true)
 
             epoch_loss += loss.item()
+
+            if DEVICE == 'cuda':
+                del x_val
+                del y_val
+                torch.cuda.empty_cache()
 
     return epoch_loss / (i or 1)
 
