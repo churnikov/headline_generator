@@ -41,19 +41,21 @@
     }
   },
   "training_params":{
-    "batch_size": 64,
+    "batch_size": 16,
     "criterion":{
       "name": "CrossEntropyLoss",
       "params":{}
     },
     "optimizer":{
       "name": "Adam",
-      "params":{}
+      "params":{
+        "lr": 0.000001
+      }
     }
   },
   "data":{
-    "train_file_path": "data/dataset/ria_20_prep.csv",
-    "test_file_path": "data/dataset/ria_20_prep.csv"
+    "train_file_path": "data/dataset/ria_prep_train.csv",
+    "test_file_path": "data/dataset/ria_prep_test.csv"
   },
   "results":{
     "output_dir": "output",

@@ -103,7 +103,8 @@ else:
     raise NotImplementedError(f"Loss {config['training_params']['criterion']['name']} not supported")
 
 if config['training_params']['optimizer']['name'] == 'Adam':
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(model.parameters(),
+                           lr=config['training_params']['optimizer']['params']['lr'])
 else:
     raise NotImplementedError(f"Loss {config['training_params']['criterion']['name']} not supported")
 
