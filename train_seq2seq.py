@@ -1,7 +1,10 @@
 import csv
-import math
+import json
+import os
 import sys
 from collections import Counter
+import argparse
+from typing import Dict, Union, Optional
 
 import torch
 from torch import nn
@@ -14,24 +17,107 @@ from tqdm import tqdm
 
 from baselines import Encoder, Decoder, Seq2SeqSummarizer
 
+csv.field_size_limit(sys.maxsize)
 
 try:
-    nn.GRU(100, 100).to('cuda')
+    nn.GRU(10, 10).to('cuda')
 except Exception:
     pass
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--config')
+args = parser.parse_args()
+config_path = args.config
+
+with open(config_path, 'r') as f:
+    config = json.load(f)
+
+MODEL_NAME = config['model']['name']
+EMB_DIM = config['model']['embedding']['params']['dim']
+VOCAB_SIZE = config['model']['embedding']['params']['vocab_size']
+BATCH_SIZE = config['training_params']['batch_size']
+TRAIN_DATA_PATH = config['data']['train_file_path']
+TEST_DATA_PATH = config['data']['test_file_path']
+SAVE_MODEL_PATH = os.path.join(config['results']['output_dir'], MODEL_NAME)
+if not os.path.exists(SAVE_MODEL_PATH):
+    os.makedirs(SAVE_MODEL_PATH)
+SAVE_NAME = os.path.join(SAVE_MODEL_PATH, config['results']['model_save_name'])
+
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+SOS_TOKEN = '<s>'
+EOS_TOKEN = '</s>'
+PAD_TOKEN = '<pad>'
+
+if config['model']['embedding']['name'] == 'bpe':
+    bpe = BPEmb(lang='ru', vs=VOCAB_SIZE, dim=EMB_DIM, add_pad_emb=True)
+
+    text_field = Field(init_token=SOS_TOKEN, eos_token=EOS_TOKEN, tokenize=bpe.encode, pad_token=PAD_TOKEN)
+    text_field.vocab = Vocab(Counter(bpe.words))
+
+    embedding = nn.Embedding.from_pretrained(torch.tensor(bpe.vectors, dtype=torch.float32))
+    embedding.to(DEVICE)
+else:
+    raise NotImplementedError(f"Embedding {config['model']['embedding']['name']} not supported")
+
+if config['model']['encoder']['name'] == 'lstm_encoder':
+    encoder_params: Dict[str, Union[int, float, bool, Optional[str]]] = config['model']['encoder']['params']
+    encoder_device: Optional[str] = encoder_params.pop('device') or DEVICE
+
+    encoder = Encoder(embedding=embedding,
+                      lstm_n_layers=encoder_params['lstm_n_layers'],
+                      lstm_hidden_size=encoder_params['lstm_hidden_size'],
+                      embedding_dim=EMB_DIM,
+                      lstm_batch_first=encoder_params['lstm_batch_first'],
+                      lstm_bidirectional=encoder_params['lstm_bidirectional'],
+                      lstm_dropout=encoder_params['lstm_dropout'],
+                      embed_dropout=encoder_params['embed_dropout'])
+    encoder.to(encoder_device)
+else:
+    raise NotImplementedError(f"Encoder {config['model']['encoder']['name']} not supported")
+
+if config['model']['decoder']['name'] == 'lstm_decoder':
+    decoder_params: Dict[str, Union[int, float, bool, Optional[str]]] = config['model']['decoder']['params']
+    decoder_device: Optional[str] = decoder_params.pop('device') or DEVICE
+
+    decoder = Decoder(embedding=embedding, vocab_size=VOCAB_SIZE,
+                      lstm_n_layers=decoder_params['lstm_n_layers'],
+                      lstm_hidden_size=decoder_params['lstm_hidden_size'],
+                      embedding_dim=EMB_DIM,
+                      lstm_batch_first=decoder_params['lstm_batch_first'],
+                      lstm_bidirectional=decoder_params['lstm_bidirectional'],
+                      lstm_dropout=decoder_params['lstm_dropout'],
+                      embed_dropout=decoder_params['embed_dropout'])
+    decoder.to(decoder_device)
+else:
+    raise NotImplementedError(f"Decoder {config['model']['decoder']['name']} not supported")
+
+if config['model']['name'] == 'Seq2SeqSummarizer':
+    model = Seq2SeqSummarizer(encoder, decoder, device=DEVICE).to(DEVICE)
+else:
+    raise NotImplementedError(f"Model {config['model']['name']} not supported")
+
+if config['training_params']['criterion']['name'] == 'CrossEntropyLoss':
+    loss = CrossEntropyLoss(ignore_index=text_field.vocab.stoi[PAD_TOKEN])
+else:
+    raise NotImplementedError(f"Loss {config['training_params']['criterion']['name']} not supported")
+
+if config['training_params']['optimizer']['name'] == 'Adam':
+    optimizer = optim.Adam(model.parameters())
+else:
+    raise NotImplementedError(f"Loss {config['training_params']['criterion']['name']} not supported")
 
 
-def train(model, train_data, optimizer, criterion, clip, device, teacher_forcing_ratio):
+def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
     model.train()
 
     epoch_loss = 0
-    i = 1
+    i = 0
 
     with tqdm(bar_format='{postfix[0]} {postfix[3][iter]}/{postfix[2]} {postfix[1]}: {postfix[1][loss]}',
               postfix=['Training iter:', 'Loss', dict(loss=0, iter=0)]) as t:
         for i, data in enumerate(train_data):
-            x_train, y_train = data.text.to(device), data.title.to(device)
+            x_train, y_train = data.text, data.title
 
             optimizer.zero_grad()
 
@@ -51,19 +137,18 @@ def train(model, train_data, optimizer, criterion, clip, device, teacher_forcing
             t.postfix[2]['iter'] = i
             t.update()
 
-    return epoch_loss / i
+    return epoch_loss / (i or 1)
 
 
-def evaluate(model, validation_data, criterion, device):
+def evaluate(model, validation_data, criterion):
     model.eval()
 
     epoch_loss = 0
     i = 1
 
     with torch.no_grad():
-        for i, (x_val, y_val) in tqdm(enumerate(validation_data), desc='Validating'):
-
-            y_val, y_val = y_val.to(device), y_val.to(device)
+        for i, data in tqdm(enumerate(validation_data), desc='Validating'):
+            x_val, y_val = data.text, data.title
 
             y_true = y_val[1:].view(-1)
 
@@ -73,7 +158,7 @@ def evaluate(model, validation_data, criterion, device):
 
             epoch_loss += loss.item()
 
-    return epoch_loss / i
+    return epoch_loss / (i or 1)
 
 
 def predict(model, x, max_len, end_symbol, id2word):
@@ -98,25 +183,6 @@ def predict(model, x, max_len, end_symbol, id2word):
     return ''.join(output)
 
 
-csv.field_size_limit(sys.maxsize)
-
-EMB_DIM = 100
-VOCAB_SIZE = 1001
-BATCH_SIZE = 16 
-
-bpe = BPEmb(lang='ru', vs=VOCAB_SIZE-1, dim=EMB_DIM, add_pad_emb=True)
-SOS_TOKEN = bpe.BOS_str
-EOS_TOKEN = bpe.EOS_str
-PAD_TOKEN = '<pad>'
-
-TRAIN_DATA_PATH = 'data/dataset/ria_prep_train.csv'
-TEST_DATA_PATH = 'data/dataset/ria_prep_test.csv'
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-text_field = Field(init_token=SOS_TOKEN, eos_token=EOS_TOKEN, tokenize=bpe.encode, pad_token=PAD_TOKEN)
-text_field.vocab = Vocab(Counter(bpe.words))
-
-
 def lazy_examples(csv_source):
     with open(csv_source) as f:
         reader = csv.reader(f)
@@ -125,59 +191,22 @@ def lazy_examples(csv_source):
             yield Example.fromlist([text, title], [('text', text_field), ('title', text_field)])
 
 
-train_dataset = Dataset(lazy_examples(TRAIN_DATA_PATH), [('text', text_field), ('title', text_field)])
-iterator = BucketIterator(
-    train_dataset, batch_size=BATCH_SIZE, sort_key=lambda x: len(x.text), shuffle=False,
-    device=None)
-
-embedding = nn.Embedding(VOCAB_SIZE, EMB_DIM)
-
-encoder = Encoder(embedding=embedding, **{
-    "lstm_n_layers": 1,
-    "lstm_hidden_size": 64,
-    "lstm_batch_first": False,
-    "lstm_bidirectional": True,
-    "lstm_dropout": 0.5,
-    "embed_dropout": 0.5,
-    "embedding_dim": EMB_DIM
-})
-
-decoder = Decoder(embedding=embedding, vocab_size=VOCAB_SIZE, **{
-    "lstm_n_layers": 1,
-    "lstm_hidden_size": 64,
-    "lstm_batch_first": False,
-    "lstm_bidirectional": True,
-    "lstm_dropout": 0.5,
-    "embed_dropout": 0.5,
-    "embedding_dim": EMB_DIM
-})
-
-embedding.to(DEVICE)
-encoder.to(DEVICE)
-decoder.to(DEVICE)
-summarizer = Seq2SeqSummarizer(encoder, decoder, device=DEVICE).to(DEVICE)
-
-loss = CrossEntropyLoss(ignore_index=text_field.vocab.stoi[PAD_TOKEN])
-optimizer = optim.Adam(summarizer.parameters())
-
-
-# best_valid_loss = float('inf')
+best_valid_loss = float('inf')
 
 for epoch in range(10):
+    train_dataset = Dataset(lazy_examples(TRAIN_DATA_PATH), [('text', text_field), ('title', text_field)])
+    train_iterator = BucketIterator(train_dataset, batch_size=BATCH_SIZE,
+                                    sort_key=lambda x: len(x.text), shuffle=False, device=DEVICE)
+    val_dataset = Dataset(lazy_examples(TEST_DATA_PATH), [('text', text_field), ('title', text_field)])
+    val_iterator = BucketIterator(val_dataset, batch_size=BATCH_SIZE,
+                                  sort_key=lambda x: len(x.text), shuffle=False, device=DEVICE)
 
-    train_loss = train(summarizer, iterator, optimizer, loss, 1, DEVICE, 0.5)
-    # valid_loss = evaluate(summarizer, VALIDATION_DATA, criterion)
+    train_loss = train(model, train_iterator, optimizer, loss, 1, 0.5)
+    valid_loss = evaluate(model, val_iterator, loss)
 
-    # for t in TEST_DATA:
-    #     ex = t.x[:, 0].unsqueeze(0)
-    #     break
-    #
-    # res = predict(model, ex, MAX_LEN)
-    # print(''.join([id2word[idx] for idx in ex.detach().numpy()]), res)
-
-    # if valid_loss < best_valid_loss:
-    #     best_valid_loss = valid_loss
-    torch.save(summarizer.state_dict(), 'model.pt')
+    if valid_loss < best_valid_loss:
+        best_valid_loss = valid_loss
+    torch.save(model.state_dict(), SAVE_NAME)
 
     print(
-        f'| Epoch: {epoch+1:03} | Train Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
+        f'| Epoch: {epoch+1:03} | Train Loss: {train_loss:.3f} | Valid Loss {valid_loss:.3f}')

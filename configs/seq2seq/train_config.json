@@ -1,0 +1,62 @@
+{
+  "model":{
+    "name": "Seq2SeqSummarizer",
+    "params":{
+      "teacher_forcing_ratio": 0.5
+    },
+    "encoder":{
+      "name": "lstm_encoder",
+      "params":{
+        "lstm_n_layers": 1,
+        "lstm_hidden_size": 128,
+        "lstm_batch_first": false,
+        "lstm_bidirectional": false,
+        "lstm_dropout": 0.5,
+        "embed_dropout": 0.5,
+        "device": null
+      },
+      "optimizer": null
+    },
+    "decoder":{
+      "name": "lstm_decoder",
+      "params":{
+        "lstm_n_layers": 1,
+        "lstm_hidden_size": 128,
+        "lstm_batch_first": false,
+        "lstm_bidirectional": false,
+        "lstm_dropout": 0.5,
+        "embed_dropout": 0.5,
+        "device": null
+      },
+      "optimizer": null
+    },
+    "embedding":{
+      "name": "bpe",
+      "params":{
+        "lang": "ru",
+        "pretrained": true,
+        "vocab_size": 10000,
+        "dim": 100
+      }
+    }
+  },
+  "training_params":{
+    "batch_size": 64,
+    "criterion":{
+      "name": "CrossEntropyLoss",
+      "params":{}
+    },
+    "optimizer":{
+      "name": "Adam",
+      "params":{}
+    }
+  },
+  "data":{
+    "train_file_path": "data/dataset/ria_20_prep.csv",
+    "test_file_path": "data/dataset/ria_20_prep.csv"
+  },
+  "results":{
+    "output_dir": "output",
+    "model_save_name": "model.ptr"
+  }
+}
