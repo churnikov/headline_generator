@@ -119,30 +119,33 @@ def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
     with tqdm(bar_format='{postfix[0]} {postfix[3][iter]}/{postfix[2]} {postfix[1]}: {postfix[1][loss]}',
               postfix=['Training iter:', 'Loss', dict(loss=0, iter=0)]) as t:
         for i, data in enumerate(train_data):
-            (x_train, x_len), (y_train, y_len) = data.text, data.title
+            try:
+                (x_train, x_len), (y_train, y_len) = data.text, data.title
 
-            x_len, x_idx = x_len.sort(0, descending=True)
-            x_train = x_train[x_idx, :]
-            y_len = y_len[x_idx]
-            y_train = y_train[x_idx, :]
+                x_len, x_idx = x_len.sort(0, descending=True)
+                x_train = x_train[x_idx, :]
+                y_len = y_len[x_idx]
+                y_train = y_train[x_idx, :]
 
-            optimizer.zero_grad()
+                optimizer.zero_grad()
 
-            output = model.forward(x_train, y_train, teacher_forcing_ratio=teacher_forcing_ratio, input_lenght=x_len,
-                                   output_length=y_len)
+                output = model.forward(x_train, y_train, teacher_forcing_ratio=teacher_forcing_ratio, input_lenght=x_len,
+                                       output_length=y_len)
 
-            y_true = y_train.t()[1:, :].contiguous().view(-1)
-            y_pred = output[1:].view(-1, output.shape[2])
-            loss = criterion(y_pred, y_true)
-            loss.backward()
+                y_true = y_train.t()[1:, :].contiguous().view(-1)
+                y_pred = output[1:].view(-1, output.shape[2])
+                loss = criterion(y_pred, y_true)
+                loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
 
-            optimizer.step()
+                optimizer.step()
 
-            epoch_loss += loss.item()
+                epoch_loss += loss.item()
 
-            t.postfix[2]['loss'] = loss.item()
+                t.postfix[2]['loss'] = loss.item()
+            except RuntimeError as e:
+                print(e)
             t.postfix[2]['iter'] = i
             t.update()
 
