@@ -91,10 +91,10 @@ class Encoder(nn.Module):
     def forward(self, input, input_lengths):
 
         embed = self.dropout(self.embedding(input))
-        # embed = pack_padded_sequence(embed, input_lengths, batch_first=True)
+        embed = pack_padded_sequence(embed, input_lengths, batch_first=True)
         # Input size (seq_len, batch, input_size)
         outputs, (h, c) = self.lstm(embed)
-        # outputs, output_lens = pad_packed_sequence(outputs, batch_first=True)
+        outputs, output_lens = pad_packed_sequence(outputs, batch_first=True)
         if self.lstm_bidirectional:
             outputs = outputs[:, :, :self.hidden_size] + outputs[:, :, self.hidden_size:]
 
