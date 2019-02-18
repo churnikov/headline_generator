@@ -52,7 +52,8 @@ PAD_TOKEN = '<pad>'
 if config['model']['embedding']['name'] == 'bpe':
     bpe = BPEmb(lang='ru', vs=VOCAB_SIZE-1, dim=EMB_DIM, add_pad_emb=True)
 
-    text_field = Field(init_token=SOS_TOKEN, eos_token=EOS_TOKEN, tokenize=bpe.encode, pad_token=PAD_TOKEN)
+    text_field = Field(init_token=SOS_TOKEN, eos_token=EOS_TOKEN, tokenize=bpe.encode, pad_token=PAD_TOKEN,
+                       include_lengths=True, batch_first=True)
     text_field.vocab = Vocab(Counter(bpe.words))
 
     embedding = nn.Embedding.from_pretrained(torch.tensor(bpe.vectors, dtype=torch.float32))
@@ -118,14 +119,21 @@ def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
     with tqdm(bar_format='{postfix[0]} {postfix[3][iter]}/{postfix[2]} {postfix[1]}: {postfix[1][loss]}',
               postfix=['Training iter:', 'Loss', dict(loss=0, iter=0)]) as t:
         for i, data in enumerate(train_data):
-            x_train, y_train = data.text, data.title
+            (x_train, x_len), (y_train, y_len) = data.text, data.title
+
+            x_len, x_idx = x_len.sort(0, descending=True)
+            x_train = x_train[x_idx, :]
+            y_len = y_len[x_idx]
+            y_train = y_train[x_idx, :]
 
             optimizer.zero_grad()
 
-            output = model.forward(x_train, y_train, teacher_forcing_ratio)
+            output = model.forward(x_train, y_train, teacher_forcing_ratio=teacher_forcing_ratio, input_lenght=x_len,
+                                   output_length=y_len)
 
-            y_true = y_train[1:].view(-1)
-            loss = criterion(output[1:].view(-1, output.shape[2]), y_true)
+            y_true = y_train.t()[1:, :].contiguous().view(-1)
+            y_pred = output[1:].view(-1, output.shape[2])
+            loss = criterion(y_pred, y_true)
             loss.backward()
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
@@ -154,13 +162,17 @@ def evaluate(model, validation_data, criterion):
 
     with torch.no_grad():
         for i, data in tqdm(enumerate(validation_data), desc='Validating'):
-            x_val, y_val = data.text, data.title
+            (x_val, x_len), (y_val, y_len) = data.text, data.title
+            x_len, x_idx = x_len.sort(0, descending=True)
+            x_val = x_val[x_idx, :]
+            y_len = y_len[x_idx]
+            y_val = y_val[x_idx, :]
 
-            y_true = y_val[1:].view(-1)
+            output = model.forward(x_val, y_val, teacher_forcing_ratio=0, input_lenght=x_len, output_length=y_len)
 
-            output = model.forward(x_val, y_val, 0)
-
-            loss = criterion(output[1:].view(-1, output.shape[2]), y_true)
+            y_true = y_val.t()[1:, :].contiguous().view(-1)
+            y_pred = output[1:].view(-1, output.shape[2])
+            loss = criterion(y_pred, y_true)
 
             epoch_loss += loss.item()
 

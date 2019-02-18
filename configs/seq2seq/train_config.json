@@ -9,7 +9,7 @@
       "params":{
         "lstm_n_layers": 1,
         "lstm_hidden_size": 128,
-        "lstm_batch_first": false,
+        "lstm_batch_first": true,
         "lstm_bidirectional": false,
         "lstm_dropout": 0.5,
         "embed_dropout": 0.5,
@@ -22,7 +22,7 @@
       "params":{
         "lstm_n_layers": 1,
         "lstm_hidden_size": 128,
-        "lstm_batch_first": false,
+        "lstm_batch_first": true,
         "lstm_bidirectional": false,
         "lstm_dropout": 0.5,
         "embed_dropout": 0.5,
@@ -54,8 +54,8 @@
     }
   },
   "data":{
-    "train_file_path": "data/dataset/ria_prep_train.csv",
-    "test_file_path": "data/dataset/ria_prep_test.csv"
+    "train_file_path": "data/dataset/ria_20_prep.csv",
+    "test_file_path": "data/dataset/ria_20_prep.csv"
   },
   "results":{
     "output_dir": "output",

@@ -4,8 +4,10 @@ from typing import Callable, Optional
 
 from gensim.summarization.summarizer import summarize
 from gensim.summarization.textcleaner import split_sentences
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from tqdm import tqdm
 from torch import nn
+import torch.nn.functional as F
 import torch
 
 from loader import json_iterator
@@ -79,19 +81,24 @@ class Encoder(nn.Module):
         self.n_layers = lstm_n_layers
         self.embedding_dim = embedding_dim
         self.embedding = embedding
+        self.lstm_bidirectional = lstm_bidirectional
 
         self.dropout = nn.Dropout(embed_dropout)
         self.lstm = nn.LSTM(input_size=self.embedding_dim, hidden_size=self.hidden_size,
                             num_layers=self.n_layers, batch_first=lstm_batch_first,
                             bidirectional=lstm_bidirectional, dropout=lstm_dropout)
 
-    def forward(self, input):
+    def forward(self, input, input_lengths):
 
         embed = self.dropout(self.embedding(input))
+        # embed = pack_padded_sequence(embed, input_lengths, batch_first=True)
         # Input size (seq_len, batch, input_size)
-        _, (h, c) = self.lstm(embed)
+        outputs, (h, c) = self.lstm(embed)
+        # outputs, output_lens = pad_packed_sequence(outputs, batch_first=True)
+        if self.lstm_bidirectional:
+            outputs = outputs[:, :, :self.hidden_size] + outputs[:, :, self.hidden_size:]
 
-        return h, c
+        return outputs, (h, c)
 
 
 class Decoder(nn.Module):
@@ -114,10 +121,10 @@ class Decoder(nn.Module):
         self.softmax = nn.Softmax()
 
     def forward(self, input, hidden):
-        embed = self.dropout(self.embedding(input.unsqueeze(0)))
+        embed = self.dropout(self.embedding(input.unsqueeze(1)))
 
         out, hidden = self.lstm(embed, hidden)
-        pred = self.softmax(self.out(out.squeeze(0)))
+        pred = self.softmax(self.out(out.squeeze(1)))
 
         return pred, hidden
 
@@ -134,23 +141,24 @@ class Seq2SeqSummarizer(nn.Module):
         assert self.encoder.hidden_size == self.decoder.hidden_size
         assert self.encoder.n_layers == self.decoder.n_layers
 
-    def forward(self, input_batch: torch.LongTensor, ground_truth: torch.LongTensor, teacher_forcing_ratio=0.5):
-        batch_size = input_batch.shape[1]
-        max_len = ground_truth.shape[0]
+    def forward(self, input_batch: torch.LongTensor, ground_truth: torch.LongTensor, input_lenght, output_length,
+                teacher_forcing_ratio=0.5):
+        batch_size = input_batch.shape[0]
+        max_len = ground_truth.shape[1]
         out_size = self.decoder.vocab_size
 
         outputs = torch.zeros(max_len, batch_size, out_size).to(self.device)
 
         # Start tokens
-        inp = ground_truth[0, :]
+        inp = ground_truth[:, 0]
 
-        hidden = self.encoder(input_batch)
+        encoder_output, hidden = self.encoder(input_batch, input_lenght)
 
         for i in range(1, max_len):
             output, hidden = self.decoder(inp, hidden)
             outputs[i] = output
             teacher_force = random.random() < teacher_forcing_ratio
             top1 = output.max(1)[1]
-            inp = ground_truth[i, :] if teacher_force else top1
+            inp = ground_truth[:, i] if teacher_force else top1
 
         return outputs
