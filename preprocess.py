@@ -1,9 +1,12 @@
 import argparse
 import csv
+import sys
 
 from tqdm import tqdm
 
 from preprocessing import BasicHtmlPreprocessor
+
+csv.field_size_limit(sys.maxsize)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--preprocessor_name', default='BasicHtmlPreprocessor')
