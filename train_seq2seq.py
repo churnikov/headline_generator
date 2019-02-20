@@ -15,7 +15,8 @@ from torchtext.data import Field, Example, Dataset, BucketIterator
 from torchtext.vocab import Vocab
 from tqdm import tqdm
 
-from baselines import Encoder, Decoder, Seq2SeqSummarizer
+from baselines import Encoder, Decoder, Seq2SeqSummarizer, AttentionEncoder, AttentionSeq2Seq, \
+    AttentionDecoder, NoamOpt, EncoderLayer, DecoderLayer, SelfAttention, PositionwiseFeedforward
 
 csv.field_size_limit(sys.maxsize)
 
@@ -26,6 +27,8 @@ except Exception:
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config')
+parser.add_argument('--train_path')
+parser.add_argument('--test_path')
 args = parser.parse_args()
 config_path = args.config
 
@@ -36,14 +39,28 @@ MODEL_NAME = config['model']['name']
 EMB_DIM = config['model']['embedding']['params']['dim']
 VOCAB_SIZE = config['model']['embedding']['params']['vocab_size']
 BATCH_SIZE = config['training_params']['batch_size']
-TRAIN_DATA_PATH = config['data']['train_file_path']
-TEST_DATA_PATH = config['data']['test_file_path']
+if args.train_path:
+    TRAIN_DATA_PATH = args.train_path
+elif 'data' in config and 'train_file_path' in config['data']:
+    TRAIN_DATA_PATH = config['data']['train_file_path']
+else:
+    raise FileNotFoundError('Train file is not provided. '
+                            'Use --train_path or set it in config file `data.train_file_path`')
+if args.test_path:
+    TEST_DATA_PATH = args.test_path
+elif 'data' in config and 'test_file_path' in config['data']:
+    TEST_DATA_PATH = config['data']['test_file_path']
+else:
+    raise FileNotFoundError('Test file is not provided. Use --test_path or set it in config file `data.test_file_path`')
 SAVE_MODEL_PATH = os.path.join(config['results']['output_dir'], MODEL_NAME)
 if not os.path.exists(SAVE_MODEL_PATH):
     os.makedirs(SAVE_MODEL_PATH)
 SAVE_NAME = os.path.join(SAVE_MODEL_PATH, config['results']['model_save_name'])
 
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if config['model']['params']['device']:
+    DEVICE = torch.device(config['model']['params']['device'])
+else:
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 SOS_TOKEN = '<s>'
 EOS_TOKEN = '</s>'
@@ -61,40 +78,78 @@ if config['model']['embedding']['name'] == 'bpe':
 else:
     raise NotImplementedError(f"Embedding {config['model']['embedding']['name']} not supported")
 
-if config['model']['encoder']['name'] == 'lstm_encoder':
+if 'encoder' in config['model']:
+    encoder_name = config['model']['encoder']['name']
     encoder_params: Dict[str, Union[int, float, bool, Optional[str]]] = config['model']['encoder']['params']
-    encoder_device: Optional[str] = encoder_params.pop('device') or DEVICE
+    encoder_device_name = encoder_params.pop('device')
+    encoder_device = torch.device(encoder_device_name) if encoder_device_name else DEVICE
+    if encoder_name == 'lstm_encoder':
+        encoder = Encoder(embedding=embedding,
+                          lstm_n_layers=encoder_params['lstm_n_layers'],
+                          lstm_hidden_size=encoder_params['lstm_hidden_size'],
+                          embedding_dim=EMB_DIM,
+                          lstm_batch_first=encoder_params['lstm_batch_first'],
+                          lstm_bidirectional=encoder_params['lstm_bidirectional'],
+                          lstm_dropout=encoder_params['lstm_dropout'],
+                          embed_dropout=encoder_params['embed_dropout'])
+        encoder.to(encoder_device)
+    elif encoder_name == 'attention_encoder':
+        encoder = AttentionEncoder(input_dim=len(text_field.vocab),
+                                   hid_dim=encoder_params['hidden_dim'],
+                                   n_layers=encoder_params['n_layers'],
+                                   n_heads=encoder_params['n_heads'],
+                                   pf_dim=encoder_params['pf_dim'],
+                                   dropout=encoder_params['dropout'],
+                                   device=encoder_device,
+                                   encoder_layer=EncoderLayer,
+                                   self_attention=SelfAttention,
+                                   positionwise_feedforward=PositionwiseFeedforward)
 
-    encoder = Encoder(embedding=embedding,
-                      lstm_n_layers=encoder_params['lstm_n_layers'],
-                      lstm_hidden_size=encoder_params['lstm_hidden_size'],
-                      embedding_dim=EMB_DIM,
-                      lstm_batch_first=encoder_params['lstm_batch_first'],
-                      lstm_bidirectional=encoder_params['lstm_bidirectional'],
-                      lstm_dropout=encoder_params['lstm_dropout'],
-                      embed_dropout=encoder_params['embed_dropout'])
-    encoder.to(encoder_device)
+    else:
+        raise NotImplementedError(f"Encoder {config['model']['encoder']['name']} not supported")
 else:
-    raise NotImplementedError(f"Encoder {config['model']['encoder']['name']} not supported")
+    raise KeyError('`model` config should contain information about encoder')
 
-if config['model']['decoder']['name'] == 'lstm_decoder':
+
+if 'decoder' in config['model']:
+    decoder_name = config['model']['decoder']['name']
     decoder_params: Dict[str, Union[int, float, bool, Optional[str]]] = config['model']['decoder']['params']
-    decoder_device: Optional[str] = decoder_params.pop('device') or DEVICE
+    decoder_device_name = decoder_params.pop('device')
+    decoder_device = torch.device(decoder_device_name) if decoder_device_name else DEVICE
 
-    decoder = Decoder(embedding=embedding, vocab_size=VOCAB_SIZE,
-                      lstm_n_layers=decoder_params['lstm_n_layers'],
-                      lstm_hidden_size=decoder_params['lstm_hidden_size'],
-                      embedding_dim=EMB_DIM,
-                      lstm_batch_first=decoder_params['lstm_batch_first'],
-                      lstm_bidirectional=decoder_params['lstm_bidirectional'],
-                      lstm_dropout=decoder_params['lstm_dropout'],
-                      embed_dropout=decoder_params['embed_dropout'])
-    decoder.to(decoder_device)
+    if decoder_name == 'lstm_decoder':
+
+
+        decoder = Decoder(embedding=embedding, vocab_size=VOCAB_SIZE,
+                          lstm_n_layers=decoder_params['lstm_n_layers'],
+                          lstm_hidden_size=decoder_params['lstm_hidden_size'],
+                          embedding_dim=EMB_DIM,
+                          lstm_batch_first=decoder_params['lstm_batch_first'],
+                          lstm_bidirectional=decoder_params['lstm_bidirectional'],
+                          lstm_dropout=decoder_params['lstm_dropout'],
+                          embed_dropout=decoder_params['embed_dropout'])
+        decoder.to(decoder_device)
+    elif decoder_name == 'attention_decoder':
+        decoder = AttentionDecoder(output_dim=len(text_field.vocab),
+                                   hid_dim=decoder_params['hidden_dim'],
+                                   n_layers=decoder_params['n_layers'],
+                                   n_heads=decoder_params['n_heads'],
+                                   pf_dim=decoder_params['pf_dim'],
+                                   dropout=decoder_params['dropout'],
+                                   device=decoder_device,
+                                   decoder_layer=DecoderLayer,
+                                   self_attention=SelfAttention,
+                                   positionwise_feedforward=PositionwiseFeedforward)
+
+    else:
+        raise NotImplementedError(f"Decoder {config['model']['decoder']['name']} not supported")
 else:
-    raise NotImplementedError(f"Decoder {config['model']['decoder']['name']} not supported")
+    raise KeyError('`model` config should contain information about decoder')
 
 if config['model']['name'] == 'Seq2SeqSummarizer':
     model = Seq2SeqSummarizer(encoder, decoder, device=DEVICE).to(DEVICE)
+elif config['model']['name'] == 'AttentionSeq2Seq':
+    model = AttentionSeq2Seq(encoder, decoder, text_field.vocab.stoi[PAD_TOKEN], DEVICE).to(DEVICE)
 else:
     raise NotImplementedError(f"Model {config['model']['name']} not supported")
 
@@ -106,6 +161,18 @@ else:
 if config['training_params']['optimizer']['name'] == 'Adam':
     optimizer = optim.Adam(model.parameters(),
                            lr=config['training_params']['optimizer']['params']['lr'])
+elif config['training_params']['optimizer']['name'] == 'NoamOpt':
+    opt_params = config['training_params']['optimizer']['params']
+    sub_optimizer_name =  opt_params['optimizer']
+    if sub_optimizer_name == 'Adam':
+        sub_optimizer = optim.Adam(model.parameters(), lr=opt_params['params']['lr'],
+                                   betas=tuple(opt_params['params']['betas']),
+                                   eps=opt_params['params']['eps'])
+    else:
+        raise NotImplementedError(f'Suboptimizer {sub_optimizer_name} is not supported')
+    optimizer = NoamOpt(decoder_params['hidden_dim'], factor=opt_params['factor'], warmup=opt_params['warmup'],
+                        optimizer=sub_optimizer)
+
 else:
     raise NotImplementedError(f"Loss {config['training_params']['criterion']['name']} not supported")
 
@@ -129,8 +196,12 @@ def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
 
                 optimizer.zero_grad()
 
-                output = model.forward(x_train, y_train, teacher_forcing_ratio=teacher_forcing_ratio, input_lenght=x_len,
-                                       output_length=y_len)
+
+                if config['model']['name'] == 'Seq2SeqSummarizer':
+                    output = model.forward(x_train, y_train, teacher_forcing_ratio=teacher_forcing_ratio, input_lenght=x_len,
+                                           output_length=y_len)
+                else:
+                    output = model.forward(x_train, y_train)
 
                 y_true = y_train.t()[1:, :].contiguous().view(-1)
                 y_pred = output[1:].view(-1, output.shape[2])
@@ -171,7 +242,12 @@ def evaluate(model, validation_data, criterion):
             y_len = y_len[x_idx]
             y_val = y_val[x_idx, :]
 
-            output = model.forward(x_val, y_val, teacher_forcing_ratio=0, input_lenght=x_len, output_length=y_len)
+            if config['model']['name'] == 'Seq2SeqSummarizer':
+                output = model.forward(x_val, y_val, teacher_forcing_ratio=0,
+                                       input_lenght=x_len,
+                                       output_length=y_len)
+            else:
+                output = model.forward(x_val, y_val)
 
             y_true = y_val.t()[1:, :].contiguous().view(-1)
             y_pred = output[1:].view(-1, output.shape[2])
