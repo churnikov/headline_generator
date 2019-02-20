@@ -11,7 +11,7 @@ from torch import nn
 from torch import optim
 from bpemb import BPEmb
 from torch.nn import CrossEntropyLoss
-from torchtext.data import Field, Example, Dataset, BucketIterator
+from torchtext.data import Field, Example, Dataset, BucketIterator, TabularDataset
 from torchtext.vocab import Vocab
 from tqdm import tqdm
 
@@ -66,6 +66,13 @@ SOS_TOKEN = '<s>'
 EOS_TOKEN = '</s>'
 PAD_TOKEN = '<pad>'
 
+def lazy_examples(csv_source):
+    with open(csv_source) as f:
+        reader = csv.reader(f)
+        next(reader)
+        for text, title in reader:
+            yield Example.fromlist([text, title], [('text', text_field), ('title', text_field)])
+
 if config['model']['embedding']['name'] == 'bpe':
     bpe = BPEmb(lang='ru', vs=VOCAB_SIZE-1, dim=EMB_DIM, add_pad_emb=True)
 
@@ -74,6 +81,19 @@ if config['model']['embedding']['name'] == 'bpe':
     text_field.vocab = Vocab(Counter(bpe.words))
 
     embedding = nn.Embedding.from_pretrained(torch.tensor(bpe.vectors, dtype=torch.float32))
+    embedding.to(DEVICE)
+if config['model']['embedding']['name'] == 'embedding':
+    text_field = Field(init_token=SOS_TOKEN, eos_token=EOS_TOKEN, pad_token=PAD_TOKEN, include_lengths=True,
+                       batch_first=True)
+    train_dataset = TabularDataset(TRAIN_DATA_PATH, format='csv', fields=[('text', text_field), ('title', text_field)])
+    train_iterator = BucketIterator(train_dataset, batch_size=BATCH_SIZE,
+                                    sort_key=lambda x: len(x.text), shuffle=False, device=DEVICE)
+    val_dataset = TabularDataset(TEST_DATA_PATH, format='csv', fields=[('text', text_field), ('title', text_field)])
+    val_iterator = BucketIterator(val_dataset, batch_size=BATCH_SIZE,
+                                  sort_key=lambda x: len(x.text), shuffle=False, device=DEVICE)
+    text_field.build_vocab(train_dataset)
+    embedding = nn.Embedding(config['model']['embedding']['params']['vocab_size'],
+                             config['model']['embedding']['params']['dim'])
     embedding.to(DEVICE)
 else:
     raise NotImplementedError(f"Embedding {config['model']['embedding']['name']} not supported")
@@ -186,37 +206,37 @@ def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
     with tqdm(bar_format='{postfix[0]} {postfix[2][iter]} {postfix[1]}: {postfix[2][loss]}',
               postfix=['Training iter:', 'Loss', dict(loss=0, iter=0)]) as t:
         for i, data in enumerate(train_data):
-            try:
-                (x_train, x_len), (y_train, y_len) = data.text, data.title
+            # try:
+            (x_train, x_len), (y_train, y_len) = data.text, data.title
 
-                x_len, x_idx = x_len.sort(0, descending=True)
-                x_train = x_train[x_idx, :]
-                y_len = y_len[x_idx]
-                y_train = y_train[x_idx, :]
+            x_len, x_idx = x_len.sort(0, descending=True)
+            x_train = x_train[x_idx, :]
+            y_len = y_len[x_idx]
+            y_train = y_train[x_idx, :]
 
-                optimizer.zero_grad()
+            optimizer.zero_grad()
 
 
-                if config['model']['name'] == 'Seq2SeqSummarizer':
-                    output = model.forward(x_train, y_train, teacher_forcing_ratio=teacher_forcing_ratio, input_lenght=x_len,
-                                           output_length=y_len)
-                else:
-                    output = model.forward(x_train, y_train)
+            if config['model']['name'] == 'Seq2SeqSummarizer':
+                output = model.forward(x_train, y_train, teacher_forcing_ratio=teacher_forcing_ratio, input_lenght=x_len,
+                                       output_length=y_len)
+            else:
+                output = model.forward(x_train, y_train)
 
-                y_true = y_train[1:, :].contiguous().view(-1)
-                y_pred = output[1:].view(-1, output.shape[2])
-                loss = criterion(y_pred, y_true)
-                loss.backward()
+            y_true = y_train[1:, :].contiguous().view(-1)
+            y_pred = output[1:].view(-1, output.shape[2])
+            loss = criterion(y_pred, y_true)
+            loss.backward()
 
-                torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
 
-                optimizer.step()
+            optimizer.step()
 
-                epoch_loss += loss.item()
+            epoch_loss += loss.item()
 
-                t.postfix[2]['loss'] = loss.item()
-            except RuntimeError as e:
-                print(e)
+            t.postfix[2]['loss'] = loss.item()
+            # except RuntimeError as e:
+            #     print(e)
             t.postfix[2]['iter'] = i
             t.update()
 
@@ -285,23 +305,17 @@ def predict(model, x, max_len, end_symbol, id2word):
     return ''.join(output)
 
 
-def lazy_examples(csv_source):
-    with open(csv_source) as f:
-        reader = csv.reader(f)
-        next(reader)
-        for text, title in reader:
-            yield Example.fromlist([text, title], [('text', text_field), ('title', text_field)])
-
-
 best_valid_loss = float('inf')
 
+
 for epoch in range(10):
-    train_dataset = Dataset(lazy_examples(TRAIN_DATA_PATH), [('text', text_field), ('title', text_field)])
-    train_iterator = BucketIterator(train_dataset, batch_size=BATCH_SIZE,
-                                    sort_key=lambda x: len(x.text), shuffle=False, device=DEVICE)
-    val_dataset = Dataset(lazy_examples(TEST_DATA_PATH), [('text', text_field), ('title', text_field)])
-    val_iterator = BucketIterator(val_dataset, batch_size=BATCH_SIZE,
-                                  sort_key=lambda x: len(x.text), shuffle=False, device=DEVICE)
+    if config['model']['embedding']['name'] == 'bpe':
+        train_dataset = Dataset(lazy_examples(TRAIN_DATA_PATH), [('text', text_field), ('title', text_field)])
+        train_iterator = BucketIterator(train_dataset, batch_size=BATCH_SIZE,
+                                        sort_key=lambda x: len(x.text), shuffle=False, device=DEVICE)
+        val_dataset = Dataset(lazy_examples(TEST_DATA_PATH), [('text', text_field), ('title', text_field)])
+        val_iterator = BucketIterator(val_dataset, batch_size=BATCH_SIZE,
+                                      sort_key=lambda x: len(x.text), shuffle=False, device=DEVICE)
 
     train_loss = train(model, train_iterator, optimizer, loss, 1, 0.5)
     valid_loss = evaluate(model, val_iterator, loss)

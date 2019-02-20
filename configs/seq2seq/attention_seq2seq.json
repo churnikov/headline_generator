@@ -30,11 +30,9 @@
       "optimizer": null
     },
     "embedding":{
-      "name": "bpe",
+      "name": "embedding",
       "params":{
-        "lang": "ru",
-        "pretrained": true,
-        "vocab_size": 10001,
+        "vocab_size": 10000,
         "dim": 100
       }
     }
