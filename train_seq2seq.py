@@ -183,7 +183,7 @@ def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
     epoch_loss = 0
     i = 0
 
-    with tqdm(bar_format='{postfix[0]} {postfix[3][iter]}/{postfix[2]} {postfix[1]}: {postfix[1][loss]}',
+    with tqdm(bar_format='{postfix[0]} {postfix[2][iter]}} {postfix[1]}: {postfix[2][loss]}',
               postfix=['Training iter:', 'Loss', dict(loss=0, iter=0)]) as t:
         for i, data in enumerate(train_data):
             try:
