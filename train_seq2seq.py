@@ -173,6 +173,11 @@ elif config['model']['name'] == 'AttentionSeq2Seq':
 else:
     raise NotImplementedError(f"Model {config['model']['name']} not supported")
 
+
+if DEVICE.type == 'cuda' and torch.cuda.device_count() > 1:
+    model = nn.DataParallel(model.to(DEVICE), device_ids=[0, 1, 2, 3, 4])
+
+
 if config['training_params']['criterion']['name'] == 'CrossEntropyLoss':
     loss = CrossEntropyLoss(ignore_index=text_field.vocab.stoi[PAD_TOKEN])
 else:
