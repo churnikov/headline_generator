@@ -228,8 +228,8 @@ def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
             else:
                 output = model.forward(x_train, y_train)
 
-            y_true = y_train[1:, :].contiguous().view(-1)
-            y_pred = output[:, 1:, :].contiguous().view(-1, output.shape[2])
+            y_true = y_train[:, 1:].contiguous().view(-1)
+            y_pred = output[1:, :].contiguous().view(-1, output.shape[2])
             loss = criterion(y_pred, y_true)
             loss.backward()
 
