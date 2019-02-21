@@ -237,9 +237,9 @@ def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
 
             optimizer.step()
 
-            epoch_loss += loss.item()
+            epoch_loss += float(loss.item())
 
-            t.postfix[2]['loss'] = loss.item()
+            t.postfix[2]['loss'] = float(loss.item())
             # except RuntimeError as e:
             #     print(e)
             t.postfix[2]['iter'] = i
@@ -278,7 +278,7 @@ def evaluate(model, validation_data, criterion):
             y_pred = output[1:].view(-1, output.shape[2])
             loss = criterion(y_pred, y_true)
 
-            epoch_loss += loss.item()
+            epoch_loss += float(loss.item())
 
             if DEVICE.type == 'cuda':
                 del x_val

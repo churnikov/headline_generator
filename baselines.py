@@ -92,10 +92,11 @@ class Encoder(nn.Module):
 
         embed = self.dropout(self.embedding(input))
         embed = pack_padded_sequence(embed, input_lengths, batch_first=True)
+        total_length = input.size(1)
         # Input size (seq_len, batch, input_size)
         self.lstm.flatten_parameters()
         outputs, (h, c) = self.lstm(embed)
-        outputs, output_lens = pad_packed_sequence(outputs, batch_first=True)
+        outputs, output_lens = pad_packed_sequence(outputs, batch_first=True, total_length=total_length)
         if self.lstm_bidirectional:
             outputs = outputs[:, :, :self.hidden_size] + outputs[:, :, self.hidden_size:]
 
