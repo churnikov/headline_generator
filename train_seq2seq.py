@@ -82,7 +82,7 @@ if config['model']['embedding']['name'] == 'bpe':
 
     embedding = nn.Embedding.from_pretrained(torch.tensor(bpe.vectors, dtype=torch.float32))
     embedding.to(DEVICE)
-if config['model']['embedding']['name'] == 'embedding':
+elif config['model']['embedding']['name'] == 'embedding':
     text_field = Field(init_token=SOS_TOKEN, eos_token=EOS_TOKEN, pad_token=PAD_TOKEN, include_lengths=True,
                        batch_first=True)
     train_dataset = TabularDataset(TRAIN_DATA_PATH, format='csv', fields=[('text', text_field), ('title', text_field)])
@@ -224,7 +224,7 @@ def train(model, train_data, optimizer, criterion, clip, teacher_forcing_ratio):
                 output = model.forward(x_train, y_train)
 
             y_true = y_train[1:, :].contiguous().view(-1)
-            y_pred = output[1:].view(-1, output.shape[2])
+            y_pred = output[:, 1:, :].contiguous().view(-1, output.shape[2])
             loss = criterion(y_pred, y_true)
             loss.backward()
 
